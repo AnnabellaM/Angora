@@ -25,6 +25,7 @@
 #include "../sanitizer_common/sanitizer_libc.h"
 #include <vector>
 #include <cstdio>
+#include <iterator>
 
 #include "defs.h"
 #include "dfsan.h"
@@ -32,6 +33,16 @@
 using namespace __dfsan;
 
 #include "../../../runtime/include/tag_set.h"
+
+// Define tag_seg structure to match the Rust definition
+struct tag_seg {
+    bool sign;
+    uint32_t begin;
+    uint32_t end;
+};
+
+// Forward declaration for the function that will be implemented in Rust
+extern "C" std::vector<tag_seg> dfsan_get_label_offsets(dfsan_label l);
 
 Flags __dfsan::flags_data;
 

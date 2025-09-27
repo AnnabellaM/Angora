@@ -1686,7 +1686,7 @@ void DFSanVisitor::visitCmpInst(CmpInst &CI) {
                              "_" + std::to_string(CI.getOperand(0)->getType()->getScalarSizeInBits()) + "bit";
     
     // Create global string for branch info
-    GlobalVariable *BranchInfoStr = IRB.CreateGlobalStringPtr(branch_info, "branch_info");
+    Constant *BranchInfoStr = IRB.CreateGlobalStringPtr(branch_info, "branch_info");
     
     // Call our mapping function
     IRB.CreateCall(DFSF.DFS.DFSanPrintMappingFn, {CombinedShadow, BranchInfoStr});
@@ -1811,7 +1811,7 @@ void DFSanVisitor::visitBranchInst(BranchInst &I) {
       std::string branch_info = "BRANCH_" + std::to_string(I.getNumSuccessors()) + "_succ";
       
       // Create global string for branch info
-      GlobalVariable *BranchInfoStr = IRB.CreateGlobalStringPtr(branch_info, "branch_info");
+      Constant *BranchInfoStr = IRB.CreateGlobalStringPtr(branch_info, "branch_info");
       
       // Call our mapping function
       IRB.CreateCall(DFSF.DFS.DFSanPrintMappingFn, {CondShadow, BranchInfoStr});
