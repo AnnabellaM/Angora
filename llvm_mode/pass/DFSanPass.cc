@@ -56,6 +56,7 @@
 #include <string>
 #include <utility>
 #include <vector>
+#include <sstream>
 
 #include "defs.h"
 #include "llvm/ADT/DenseMap.h"
@@ -368,9 +369,11 @@ class DataFlowSanitizer : public ModulePass {
   // Angora's custom
   FunctionType *DFSanCombineAndFnTy;
   FunctionType *DFSanInferShapeFnTy;
+  FunctionType *DFSanPrintMappingFnTy;
   FunctionCallee DFSanMarkSignedFn;
   FunctionCallee DFSanCombineAndFn;
   FunctionCallee DFSanInferShapeFn;
+  FunctionCallee DFSanPrintMappingFn;
   // End of angora's custom
   FunctionCallee DFSanUnionFn;
   FunctionCallee DFSanCheckedUnionFn;
@@ -494,6 +497,7 @@ public:
   void visitSelectInst(SelectInst &I);
   void visitMemSetInst(MemSetInst &I);
   void visitMemTransferInst(MemTransferInst &I);
+  void visitBranchInst(BranchInst &I);
 };
 
 } // end anonymous namespace
@@ -643,6 +647,10 @@ bool DataFlowSanitizer::doInitialization(Module &M) {
   Type *DFSanInferShapeArgs[3] = {ShadowTy, ShadowTy, ShadowTy};
   DFSanInferShapeFnTy = FunctionType::get(
       Type::getVoidTy(*Ctx), DFSanInferShapeArgs, /*isVarArg=*/false);
+
+  Type *DFSanPrintMappingArgs[2] = {ShadowTy, Type::getInt8PtrTy(*Ctx)};
+  DFSanPrintMappingFnTy = FunctionType::get(
+      Type::getVoidTy(*Ctx), DFSanPrintMappingArgs, /*isVarArg=*/false);
 
   if (GetArgTLSPtr) {
     Type *ArgTLSTy = ArrayType::get(ShadowTy, 64);
@@ -908,6 +916,14 @@ bool DataFlowSanitizer::runOnModule(Module &M) {
     DFSanInferShapeFn = Mod->getOrInsertFunction("dfsan_infer_shape_in_math_op",
                                                  DFSanInferShapeFnTy, AL);
   }
+  {
+    AttributeList AL;
+    AL = AL.addAttribute(M.getContext(), AttributeList::FunctionIndex,
+                         Attribute::NoUnwind);
+    AL = AL.addParamAttribute(M.getContext(), 0, Attribute::ZExt);
+    DFSanPrintMappingFn = Mod->getOrInsertFunction("dfsan_print_byte_branch_mapping",
+                                                   DFSanPrintMappingFnTy, AL);
+  }
   std::vector<Function *> FnsToInstrument;
   SmallPtrSet<Function *, 2> FnsWithNativeABI;
   for (Function &i : M) {
@@ -925,7 +941,8 @@ bool DataFlowSanitizer::runOnModule(Module &M) {
         &i != DFSanCmpCallbackFn.getCallee()->stripPointerCasts() &&
         &i != DFSanMarkSignedFn.getCallee()->stripPointerCasts() &&
         &i != DFSanCombineAndFn.getCallee()->stripPointerCasts() &&
-        &i != DFSanInferShapeFn.getCallee()->stripPointerCasts())
+        &i != DFSanInferShapeFn.getCallee()->stripPointerCasts() &&
+        &i != DFSanPrintMappingFn.getCallee()->stripPointerCasts())
       FnsToInstrument.push_back(&i);
   }
 
@@ -1659,6 +1676,21 @@ void DFSanVisitor::visitCmpInst(CmpInst &CI) {
     IRBuilder<> IRB(&CI);
     IRB.CreateCall(DFSF.DFS.DFSanCmpCallbackFn, CombinedShadow);
   }
+  
+  // Add mapping information for conditional branches
+  if (CombinedShadow != DFSF.DFS.ZeroShadow) {
+    IRBuilder<> IRB(&CI);
+    
+    // Create a string describing the branch
+    std::string branch_info = "CMP_" + std::to_string(CI.getPredicate()) + 
+                             "_" + std::to_string(CI.getOperand(0)->getType()->getScalarSizeInBits()) + "bit";
+    
+    // Create global string for branch info
+    GlobalVariable *BranchInfoStr = IRB.CreateGlobalStringPtr(branch_info, "branch_info");
+    
+    // Call our mapping function
+    IRB.CreateCall(DFSF.DFS.DFSanPrintMappingFn, {CombinedShadow, BranchInfoStr});
+  }
 }
 
 void DFSanVisitor::visitGetElementPtrInst(GetElementPtrInst &GEPI) {
@@ -1763,6 +1795,27 @@ void DFSanVisitor::visitMemTransferInst(MemTransferInst &I) {
   if (ClEventCallbacks) {
     IRB.CreateCall(DFSF.DFS.DFSanMemTransferCallbackFn,
                    {RawDestShadow, I.getLength()});
+  }
+}
+
+void DFSanVisitor::visitBranchInst(BranchInst &I) {
+  // Only handle conditional branches
+  if (I.isConditional()) {
+    Value *CondShadow = DFSF.getShadow(I.getCondition());
+    
+    // Add mapping information for conditional branches
+    if (CondShadow != DFSF.DFS.ZeroShadow) {
+      IRBuilder<> IRB(&I);
+      
+      // Create a string describing the branch
+      std::string branch_info = "BRANCH_" + std::to_string(I.getNumSuccessors()) + "_succ";
+      
+      // Create global string for branch info
+      GlobalVariable *BranchInfoStr = IRB.CreateGlobalStringPtr(branch_info, "branch_info");
+      
+      // Call our mapping function
+      IRB.CreateCall(DFSF.DFS.DFSanPrintMappingFn, {CondShadow, BranchInfoStr});
+    }
   }
 }
 

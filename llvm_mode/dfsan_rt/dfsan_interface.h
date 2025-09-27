@@ -95,6 +95,9 @@ void dfsan_set_write_callback(dfsan_write_callback_t labeled_write_callback);
 /// <label> <parent label 1> <parent label 2> <label description if any>
 //void dfsan_dump_labels(int fd);
 
+/// Prints the mapping between input bytes and conditional branches for a given label
+void dfsan_print_byte_branch_mapping(dfsan_label label, const char* branch_info);
+
 /// Interceptor hooks.
 /// Whenever a dfsan's custom function is called the corresponding
 /// hook is called it non-zero. The hooks should be defined by the user.

@@ -23,6 +23,8 @@
 #include "../sanitizer_common/sanitizer_flag_parser.h"
 #include "../sanitizer_common/sanitizer_flags.h"
 #include "../sanitizer_common/sanitizer_libc.h"
+#include <vector>
+#include <cstdio>
 
 #include "defs.h"
 #include "dfsan.h"
@@ -107,6 +109,24 @@ extern "C" SANITIZER_INTERFACE_ATTRIBUTE void dfsan_infer_shape_in_math_op(
 extern "C" SANITIZER_INTERFACE_ATTRIBUTE void dfsan_combine_and_ins(
     dfsan_label lb) {
   __angora_tag_set_combine_and(lb);
+}
+
+// New function to print mapping between input bytes and conditional branches
+extern "C" SANITIZER_INTERFACE_ATTRIBUTE void dfsan_print_byte_branch_mapping(
+    dfsan_label label, const char* branch_info) {
+  if (label > 0) {
+    // Get the input byte offsets for this label
+    std::vector<tag_seg> offsets = dfsan_get_label_offsets(label);
+    
+    printf("[DFSAN_MAPPING] Branch: %s\n", branch_info);
+    printf("[DFSAN_MAPPING] Input bytes: ");
+    for (const auto& seg : offsets) {
+      printf("[%u-%u] ", seg.begin, seg.end - 1);
+    }
+    printf("\n");
+    printf("[DFSAN_MAPPING] Label: %u\n", label);
+    printf("---\n");
+  }
 }
 
 // Like __dfsan_union, but for use from the client or custom functions.  Hence
