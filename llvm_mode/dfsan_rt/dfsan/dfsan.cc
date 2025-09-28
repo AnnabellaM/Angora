@@ -245,6 +245,7 @@ static FILE *get_log() {
   angora_label_log = fopen(p, "a");
   if (!angora_label_log) return nullptr;
   setvbuf(angora_label_log, nullptr, _IONBF, 0);
+  fprintf(angora_label_log, "{\"type\":\"labelmap\"}\n");
   return angora_label_log;
 }
 
@@ -262,7 +263,10 @@ static inline uintptr_t current_pc() {
 // Called for every icmp/fcmp when -angora-dfsan-event-callbacks is enabled.
 extern "C" SANITIZER_INTERFACE_ATTRIBUTE
 void __dfsan_cmp_callback(dfsan_label combined) {
+  fprintf(stderr, "dfsan_cmp_callback: pc=%p label=%u\n",
+          (void*)current_pc(), combined);
   if (!combined) return;
+  
   FILE *F = get_log(); if (!F) return;
 
   fprintf(F, "{\"pc\":\"0x%llx\",\"bytes\":[",
