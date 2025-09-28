@@ -31,9 +31,12 @@
 
 using namespace __dfsan;
 
+typedef atomic_uint16_t atomic_dfsan_label;
+static const dfsan_label kInitializingLabel = -1;
 static const uptr kNumLabels = 1 << (sizeof(dfsan_label) * 8);
+static atomic_dfsan_label __dfsan_last_label;
 static dfsan_label_info __dfsan_label_info[kNumLabels];
-
+  
 Flags __dfsan::flags_data;
 
 SANITIZER_INTERFACE_ATTRIBUTE THREADLOCAL dfsan_label __dfsan_retval_tls;
