@@ -23,6 +23,7 @@
 #include "../sanitizer_common/sanitizer_flag_parser.h"
 #include "../sanitizer_common/sanitizer_flags.h"
 #include "../sanitizer_common/sanitizer_libc.h"
+#include "sanitizer/dfsan_interface.h"
 
 #include "defs.h"
 #include "dfsan.h"
@@ -219,6 +220,49 @@ static void InitializePlatformEarly() {
 }
 
 static void dfsan_fini() {}
+
+// ---- Byte→branch logging for compares ---------------------------------
+#include <inttypes.h>
+#include <cstdio>
+
+static THREADLOCAL FILE *angora_label_log;
+
+static FILE *get_log() {
+  if (angora_label_log) return angora_label_log;
+  const char *p = GetEnv("ANGORA_LABEL_LOG");  // e.g., /tmp/labelmap.jsonl
+  if (!p) p = "/tmp/labelmap.jsonl";
+  angora_label_log = fopen(p, "a");
+  if (!angora_label_log) return nullptr;
+  setvbuf(angora_label_log, nullptr, _IONBF, 0);
+  return angora_label_log;
+}
+
+static void dump_base_bytes(dfsan_label L, FILE *F) {
+  if (!L) return;
+  const struct dfsan_label_info *I = dfsan_get_label_info(L);
+  if (!I) return;
+  if (I->l1 || I->l2) { dump_base_bytes(I->l1, F); dump_base_bytes(I->l2, F); }
+  else fprintf(F, "%" PRIu64 ",", (uint64_t)I->userdata);  // byte index
+}
+
+static inline uintptr_t current_pc() {
+  return (uintptr_t)__builtin_return_address(0);
+}
+
+// Called for every icmp/fcmp when -angora-dfsan-event-callbacks is enabled.
+extern "C" SANITIZER_INTERFACE_ATTRIBUTE
+void __dfsan_cmp_callback(dfsan_label combined) {
+  if (!combined) return;
+  FILE *F = get_log(); if (!F) return;
+
+  fprintf(F, "{\"pc\":\"0x%llx\",\"bytes\":[",
+          (unsigned long long)current_pc());
+  dump_base_bytes(combined, F);
+  long pos = ftell(F); if (pos > 0) fseek(F, -1, SEEK_CUR);  // trim trailing comma
+  fprintf(F, "]}\n");
+}
+// -----------------------------------------------------------------------
+
 
 static void dfsan_init(int argc, char **argv, char **envp) {
   InitializeFlags();
