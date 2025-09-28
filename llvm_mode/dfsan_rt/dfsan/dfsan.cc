@@ -28,15 +28,11 @@
 #include "defs.h"
 #include "dfsan.h"
 #include "../../../runtime/include/tag_set.h"
+#include <vector>
 
 using namespace __dfsan;
 
-typedef atomic_uint16_t atomic_dfsan_label;
-static const dfsan_label kInitializingLabel = -1;
-static const uptr kNumLabels = 1 << (sizeof(dfsan_label) * 8);
-static atomic_dfsan_label __dfsan_last_label;
-static dfsan_label_info __dfsan_label_info[kNumLabels];
-  
+
 Flags __dfsan::flags_data;
 
 SANITIZER_INTERFACE_ATTRIBUTE THREADLOCAL dfsan_label __dfsan_retval_tls;
@@ -175,14 +171,18 @@ SANITIZER_INTERFACE_ATTRIBUTE dfsan_label dfsan_read_label(const void *addr,
   return __angora_tag_set_combine_n(ls, (uint32_t)size, false);
 }
 
-extern "C" SANITIZER_INTERFACE_ATTRIBUTE
-const struct dfsan_label_info *dfsan_get_label_info(dfsan_label label) {
-  return &__dfsan_label_info[label];
-}
-
 SANITIZER_INTERFACE_ATTRIBUTE const dfsan_label *dfsan_shadow_for(
     const void *addr) {
   return shadow_for(addr);
+}
+
+const std::vector<tag_seg> dfsan_get_label_offsets(dfsan_label L) {
+  std::vector<tag_seg> out;
+  size_t need = __angora_tag_set_find((uint32_t)L, nullptr, 0);
+  if (!need) return out;
+  out.resize(need);
+  (void)__angora_tag_set_find((uint32_t)L, out.data(), need);
+  return out;
 }
 
 // const std::vector<struct tag_seg> dfsan_get_label_offsets(dfsan_label l) {
@@ -249,11 +249,10 @@ static FILE *get_log() {
 }
 
 static void dump_base_bytes(dfsan_label L, FILE *F) {
-  if (!L) return;
-  const struct dfsan_label_info *I = dfsan_get_label_info(L);
-  if (!I) return;
-  if (I->l1 || I->l2) { dump_base_bytes(I->l1, F); dump_base_bytes(I->l2, F); }
-  else fprintf(F, "%" PRIu64 ",", (uint64_t)I->userdata);  // byte index
+  for (const auto &seg : dfsan_get_label_offsets(L)) {
+    for (uint32_t i = seg.begin; i < seg.end; ++i)
+      fprintf(F, "%u,", i);
+  }
 }
 
 static inline uintptr_t current_pc() {

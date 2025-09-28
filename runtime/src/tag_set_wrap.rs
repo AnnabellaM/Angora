@@ -9,6 +9,38 @@ lazy_static! {
     static ref TS: Mutex<Option<TagSet>> = Mutex::new(Some(TagSet::new()));
 }
 
+#[repr(C)]
+#[derive(Copy, Clone, Debug)]
+pub struct TagSegC {
+    pub begin: u32, // inclusive
+    pub end:   u32, // exclusive
+}
+
+/// C-FFI: enumerate segments for label `lb`.
+/// If `out` is null or `cap == 0`, returns how many segments are needed.
+/// Otherwise writes up to `cap` segments into `out`, and still returns total needed.
+#[no_mangle]
+pub extern "C" fn __angora_tag_set_find(lb: u32, out: *mut TagSegC, cap: usize) -> usize {
+    let segs = tag_set_find(lb as usize);
+    let need = segs.len();
+
+    if out.is_null() || cap == 0 {
+        return need;
+    }
+
+    let to_write = need.min(cap);
+    unsafe {
+        for i in 0..to_write {
+            let s = &segs[i];
+            *out.add(i) = TagSegC {
+                begin: s.begin as u32,
+                end:   s.end as u32,
+            };
+        }
+    }
+    need
+}
+
 #[no_mangle]
 pub extern "C" fn __angora_tag_set_insert(offset: u32) -> u32 {
     let mut tsl = TS.lock().unwrap();
