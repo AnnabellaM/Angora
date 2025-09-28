@@ -23,7 +23,6 @@
 #include "../sanitizer_common/sanitizer_flag_parser.h"
 #include "../sanitizer_common/sanitizer_flags.h"
 #include "../sanitizer_common/sanitizer_libc.h"
-#include "sanitizer/dfsan_interface.h"
 
 #include "defs.h"
 #include "dfsan.h"
