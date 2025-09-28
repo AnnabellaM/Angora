@@ -24,12 +24,15 @@
 #include "../sanitizer_common/sanitizer_flags.h"
 #include "../sanitizer_common/sanitizer_libc.h"
 
+
 #include "defs.h"
 #include "dfsan.h"
+#include "../../../runtime/include/tag_set.h"
 
 using namespace __dfsan;
 
-#include "../../../runtime/include/tag_set.h"
+static const uptr kNumLabels = 1 << (sizeof(dfsan_label) * 8);
+static dfsan_label_info __dfsan_label_info[kNumLabels];
 
 Flags __dfsan::flags_data;
 
@@ -37,6 +40,7 @@ SANITIZER_INTERFACE_ATTRIBUTE THREADLOCAL dfsan_label __dfsan_retval_tls;
 SANITIZER_INTERFACE_ATTRIBUTE THREADLOCAL dfsan_label __dfsan_arg_tls[64];
 
 SANITIZER_INTERFACE_ATTRIBUTE uptr __dfsan_shadow_ptr_mask;
+
 
 #ifdef DFSAN_RUNTIME_VMA
 // Runtime detected VMA size.
@@ -166,6 +170,11 @@ SANITIZER_INTERFACE_ATTRIBUTE dfsan_label dfsan_read_label(const void *addr,
   const dfsan_label *ls = shadow_for(addr);
   if (!ls) return 0;
   return __angora_tag_set_combine_n(ls, (uint32_t)size, false);
+}
+
+extern "C" SANITIZER_INTERFACE_ATTRIBUTE
+const struct dfsan_label_info *dfsan_get_label_info(dfsan_label label) {
+  return &__dfsan_label_info[label];
 }
 
 SANITIZER_INTERFACE_ATTRIBUTE const dfsan_label *dfsan_shadow_for(
