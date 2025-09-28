@@ -23,6 +23,7 @@
 #include "../sanitizer_common/sanitizer_flag_parser.h"
 #include "../sanitizer_common/sanitizer_flags.h"
 #include "../sanitizer_common/sanitizer_libc.h"
+#include "../dfsan_interface.h"
 
 #include "defs.h"
 #include "dfsan.h"
@@ -228,7 +229,7 @@ static THREADLOCAL FILE *angora_label_log;
 
 static FILE *get_log() {
   if (angora_label_log) return angora_label_log;
-  const char *p = GetEnv("ANGORA_LABEL_LOG");  // e.g., /tmp/labelmap.jsonl
+  const char *p = GetEnv("ANGORA_LABEL_LOG"); 
   if (!p) p = "/tmp/labelmap.jsonl";
   angora_label_log = fopen(p, "a");
   if (!angora_label_log) return nullptr;
