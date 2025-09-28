@@ -263,8 +263,7 @@ static inline uintptr_t current_pc() {
 // Called for every icmp/fcmp when -angora-dfsan-event-callbacks is enabled.
 extern "C" SANITIZER_INTERFACE_ATTRIBUTE
 void __dfsan_cmp_callback(dfsan_label combined) {
-  fprintf(stderr, "dfsan_cmp_callback: pc=%p label=%u\n",
-          (void*)current_pc(), combined);
+  printf("in cmp callback\n");
   if (!combined) return;
   
   FILE *F = get_log(); if (!F) return;
