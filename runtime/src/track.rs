@@ -152,8 +152,8 @@ pub extern "C" fn __dfsw___angora_trace_cmp_tt(
     l5: DfsanLabel,
     _l6: DfsanLabel,
 ) {
-    println!("[CMP] ID: {}, Ctx: 0x{:x}, Size: {}, Pred: {}, Arg1: 0x{:x}, Arg2: 0x{:x}, Result: {}, Label1: {}, Label2: {}",
-            cmpid, context, size, pred, arg1, arg2, condition, l4, l5);
+    println!("[CMP] ID: {}, Ctx: 0x{:x}, Size: {}, OP: {}, Arg1: 0x{:x}, Arg2: 0x{:x}, Result: {}, Label1: {}, Label2: {}",
+            cmpid, context, size, op, arg1, arg2, condition, l4, l5);
 
     // ret_label: *mut DfsanLabel
     let lb1 = l4;
