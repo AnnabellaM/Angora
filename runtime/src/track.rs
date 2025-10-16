@@ -152,8 +152,6 @@ pub extern "C" fn __dfsw___angora_trace_cmp_tt(
     l5: DfsanLabel,
     _l6: DfsanLabel,
 ) {
-    println!("[CMP] ID: {}, Ctx: 0x{:x}, Size: {}, OP: {}, Arg1: 0x{:x}, Arg2: 0x{:x}, Result: {}, Label1: {}, Label2: {}",
-            cmpid, context, size, op, arg1, arg2, condition, l4, l5);
 
     // ret_label: *mut DfsanLabel
     let lb1 = l4;
@@ -167,6 +165,8 @@ pub extern "C" fn __dfsw___angora_trace_cmp_tt(
     infer_shape(lb2, size);
 
     // Add branch logging
+    println!("[CMP] ID: {}, Ctx: 0x{:x}, Size: {}, OP: {}, Arg1: 0x{:x}, Arg2: 0x{:x}, Result: {}, Label1: {}, Label2: {}",
+            cmpid, context, size, op, arg1, arg2, condition, lb1, lb2);
     log_branch_cmp(cmpid, context, size, op, arg1, arg2, condition, lb1, lb2);
 
     log_cmp(cmpid, context, condition, op, size, lb1, lb2, arg1, arg2);
