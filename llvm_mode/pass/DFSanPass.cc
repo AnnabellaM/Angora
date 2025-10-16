@@ -176,7 +176,7 @@ static cl::opt<bool> ClDebugNonzeroLabels(
 static cl::opt<bool> ClEventCallbacks(
     "angora-dfsan-event-callbacks",
     cl::desc("Insert calls to __dfsan_*_callback functions on data events."),
-    cl::Hidden, cl::init(true));
+    cl::Hidden, cl::init(false));
 
 static StringRef GetGlobalTypeString(const GlobalValue &G) {
   // Types of GlobalVariables are always pointer types.
