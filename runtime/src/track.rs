@@ -315,7 +315,7 @@ pub extern "C" fn __dfsw___angora_trace_fn_tt(
         ).ok();
 
         // Print the strings/data
-        let print_data = |data: &[u8], label: &str| {
+        let mut print_data = |data: &[u8], label: &str| {
             write!(file, "  {}: ", label).ok();
             let max_len = std::cmp::min(data.len(), 64);
             for &byte in &data[..max_len] {
