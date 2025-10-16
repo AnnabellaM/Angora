@@ -273,6 +273,7 @@ void __dfsan_mem_transfer_callback(const dfsan_label*, size_t) {}
 extern "C" SANITIZER_INTERFACE_ATTRIBUTE
 void __dfsan_cmp_callback(dfsan_label combined) {
   printf("in cmp callback\n");
+  printf("combined: %u\n", combined);
   if (!combined) return;
 
   printf("{\"pc\":\"0x\",\"bytes\":[");
