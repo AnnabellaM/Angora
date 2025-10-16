@@ -82,27 +82,25 @@ fn log_branch_cmp(
             writeln!(file).ok();
         }
 
-        // Print tainted byte offsets if available
+        // Print tainted byte offsets
         if lb1 > 0 {
-            if let Ok(offsets) = tag_set_wrap::tag_set_find(lb1 as usize) {
-                if !offsets.is_empty() {
-                    write!(file, "  Tainted offsets (arg1): ").ok();
-                    for offset in offsets.iter().take(20) {
-                        write!(file, "{} ", offset).ok();
-                    }
-                    writeln!(file).ok();
+            let offsets = tag_set_wrap::tag_set_find(lb1 as usize);
+            if !offsets.is_empty() {
+                write!(file, "  Tainted offsets (arg1): ").ok();
+                for seg in offsets.iter().take(20) {
+                    write!(file, "{}:{} ", seg.begin, seg.end).ok();
                 }
+                writeln!(file).ok();
             }
         }
         if lb2 > 0 {
-            if let Ok(offsets) = tag_set_wrap::tag_set_find(lb2 as usize) {
-                if !offsets.is_empty() {
-                    write!(file, "  Tainted offsets (arg2): ").ok();
-                    for offset in offsets.iter().take(20) {
-                        write!(file, "{} ", offset).ok();
-                    }
-                    writeln!(file).ok();
+            let offsets = tag_set_wrap::tag_set_find(lb2 as usize);
+            if !offsets.is_empty() {
+                write!(file, "  Tainted offsets (arg2): ").ok();
+                for seg in offsets.iter().take(20) {
+                    write!(file, "{}:{} ", seg.begin, seg.end).ok();
                 }
+                writeln!(file).ok();
             }
         }
     }
@@ -232,14 +230,13 @@ pub extern "C" fn __dfsw___angora_trace_switch_tt(
         writeln!(file).ok();
 
         // Print tainted offsets
-        if let Ok(offsets) = tag_set_wrap::tag_set_find(lb as usize) {
-            if !offsets.is_empty() {
-                write!(file, "  Tainted offsets: ").ok();
-                for offset in offsets.iter().take(20) {
-                    write!(file, "{} ", offset).ok();
-                }
-                writeln!(file).ok();
+        let offsets = tag_set_wrap::tag_set_find(lb as usize);
+        if !offsets.is_empty() {
+            write!(file, "  Tainted offsets: ").ok();
+            for seg in offsets.iter().take(20) {
+                write!(file, "{}:{} ", seg.begin, seg.end).ok();
             }
+            writeln!(file).ok();
         }
     }
 
@@ -339,25 +336,23 @@ pub extern "C" fn __dfsw___angora_trace_fn_tt(
 
         // Print tainted offsets
         if lb1 > 0 {
-            if let Ok(offsets) = tag_set_wrap::tag_set_find(lb1 as usize) {
-                if !offsets.is_empty() {
-                    write!(file, "  Tainted offsets (arg1): ").ok();
-                    for offset in offsets.iter().take(20) {
-                        write!(file, "{} ", offset).ok();
-                    }
-                    writeln!(file).ok();
+            let offsets = tag_set_wrap::tag_set_find(lb1 as usize);
+            if !offsets.is_empty() {
+                write!(file, "  Tainted offsets (arg1): ").ok();
+                for seg in offsets.iter().take(20) {
+                    write!(file, "{}:{} ", seg.begin, seg.end).ok();
                 }
+                writeln!(file).ok();
             }
         }
         if lb2 > 0 {
-            if let Ok(offsets) = tag_set_wrap::tag_set_find(lb2 as usize) {
-                if !offsets.is_empty() {
-                    write!(file, "  Tainted offsets (arg2): ").ok();
-                    for offset in offsets.iter().take(20) {
-                        write!(file, "{} ", offset).ok();
-                    }
-                    writeln!(file).ok();
+            let offsets = tag_set_wrap::tag_set_find(lb2 as usize);
+            if !offsets.is_empty() {
+                write!(file, "  Tainted offsets (arg2): ").ok();
+                for seg in offsets.iter().take(20) {
+                    write!(file, "{}:{} ", seg.begin, seg.end).ok();
                 }
+                writeln!(file).ok();
             }
         }
     }
@@ -423,14 +418,14 @@ pub extern "C" fn __dfsw___angora_trace_exploit_val_tt(
             cmpid, context, size, op, val, lb
         ).ok();
 
-        if let Ok(offsets) = tag_set_wrap::tag_set_find(lb as usize) {
-            if !offsets.is_empty() {
-                write!(file, "  Tainted offsets: ").ok();
-                for offset in offsets.iter().take(20) {
-                    write!(file, "{} ", offset).ok();
-                }
-                writeln!(file).ok();
+        // Print tainted offsets
+        let offsets = tag_set_wrap::tag_set_find(lb as usize);
+        if !offsets.is_empty() {
+            write!(file, "  Tainted offsets: ").ok();
+            for seg in offsets.iter().take(20) {
+                write!(file, "{}:{} ", seg.begin, seg.end).ok();
             }
+            writeln!(file).ok();
         }
     }
 
