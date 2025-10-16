@@ -73,7 +73,7 @@ static void LogBranchInfo(const char* msg) {
 // Trace conditional branches with tainted data
 extern "C" SANITIZER_INTERFACE_ATTRIBUTE void __dfsan_branch_callback(
     uptr pc, dfsan_label label) {
-  printf("branch callback: pc = %lx, label = %u\n", pc, label);
+  Printf("branch callback: pc = %lx, label = %u\n", pc, label);
   if (label > 0) {
     char buf[256];
     internal_snprintf(buf, sizeof(buf),
