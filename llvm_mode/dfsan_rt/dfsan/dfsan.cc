@@ -31,6 +31,7 @@
 
 using namespace __dfsan;
 
+
 Flags __dfsan::flags_data;
 
 SANITIZER_INTERFACE_ATTRIBUTE THREADLOCAL dfsan_label __dfsan_retval_tls;
@@ -42,172 +43,6 @@ SANITIZER_INTERFACE_ATTRIBUTE uptr __dfsan_shadow_ptr_mask;
 // Runtime detected VMA size.
 int __dfsan::vmaSize;
 #endif
-
-// Branch trace output file
-static int branch_trace_fd = -1;
-static const char* branch_trace_file = nullptr;
-static bool enable_branch_trace = false;
-
-static void InitializeBranchTrace() {
-  branch_trace_file = GetEnv("DFSAN_BRANCH_TRACE");
-  if (branch_trace_file) {
-    enable_branch_trace = true;
-    branch_trace_fd = OpenFile(branch_trace_file, WrOnly);
-    if (branch_trace_fd == kInvalidFd) {
-      Report("WARNING: DataFlowSanitizer: failed to open branch trace file %s\n", 
-             branch_trace_file);
-    } else {
-      const char* header = "=== DataFlowSanitizer Branch Trace ===\n";
-      WriteToFile(branch_trace_fd, header, internal_strlen(header));
-    }
-  }
-}
-
-static void LogBranchInfo(const char* msg) {
-  if (branch_trace_fd != kInvalidFd) {
-    WriteToFile(branch_trace_fd, msg, internal_strlen(msg));
-  }
-  if (flags().warn_nonzero_labels) {
-    Printf("%s", msg);
-  }
-}
-
-// Angora's trace_cmp function - called for comparison instructions
-// This is where branches with tainted data are tracked
-extern "C" SANITIZER_INTERFACE_ATTRIBUTE void __angora_trace_cmp_tt(
-    u32 cmpid, u32 context, u32 size, u32 type, u64 arg1, u64 arg2, u32 result) {
-  
-  if (!enable_branch_trace)
-    return;
-    
-  char buf[512];
-  
-  // Decode the predicate type
-  const char* pred_str = "UNKNOWN";
-  u32 base_pred = type & 0xFF;  // Remove flags
-  
-  switch(base_pred) {
-    case 0: pred_str = "EQ"; break;
-    case 1: pred_str = "NE"; break;
-    case 32: pred_str = "UGT"; break;
-    case 33: pred_str = "UGE"; break;
-    case 34: pred_str = "ULT"; break;
-    case 35: pred_str = "ULE"; break;
-    case 36: pred_str = "SGT"; break;
-    case 37: pred_str = "SGE"; break;
-    case 38: pred_str = "SLT"; break;
-    case 39: pred_str = "SLE"; break;
-  }
-  
-  internal_snprintf(buf, sizeof(buf),
-                   "[CMP] ID: %u, Ctx: 0x%x, Size: %u, Pred: %s, "
-                   "Arg1: 0x%llx, Arg2: 0x%llx, Result: %u\n",
-                   cmpid, context, size, pred_str, arg1, arg2, result);
-  LogBranchInfo(buf);
-  
-  // Also try to show the data as bytes for small values
-  if (size <= 8 && size > 0) {
-    char hex_buf[256];
-    char* pos = hex_buf;
-    pos += internal_snprintf(pos, 32, "  Arg1 bytes: ");
-    for (u32 i = 0; i < size; i++) {
-      pos += internal_snprintf(pos, 8, "%02x ", (u8)((arg1 >> (i * 8)) & 0xFF));
-    }
-    pos += internal_snprintf(pos, 32, "\n  Arg2 bytes: ");
-    for (u32 i = 0; i < size; i++) {
-      pos += internal_snprintf(pos, 8, "%02x ", (u8)((arg2 >> (i * 8)) & 0xFF));
-    }
-    internal_snprintf(pos, 8, "\n");
-    LogBranchInfo(hex_buf);
-  }
-}
-
-// Angora's trace_switch function - called for switch statements
-extern "C" SANITIZER_INTERFACE_ATTRIBUTE void __angora_trace_switch_tt(
-    u32 cmpid, u32 context, u32 size, u64 condition, u32 num_cases, u64* case_values) {
-  
-  if (!enable_branch_trace)
-    return;
-    
-  char buf[512];
-  internal_snprintf(buf, sizeof(buf),
-                   "[SWITCH] ID: %u, Ctx: 0x%x, Size: %u, Condition: 0x%llx, Cases: %u\n",
-                   cmpid, context, size, condition, num_cases);
-  LogBranchInfo(buf);
-  
-  // Show first few case values
-  if (case_values && num_cases > 0) {
-    char case_buf[512];
-    char* pos = case_buf;
-    pos += internal_snprintf(pos, 32, "  Cases: ");
-    u32 max_show = (num_cases < 10) ? num_cases : 10;
-    for (u32 i = 0; i < max_show; i++) {
-      pos += internal_snprintf(pos, 24, "0x%llx ", case_values[i]);
-    }
-    if (num_cases > 10) {
-      pos += internal_snprintf(pos, 16, "... (%u more)", num_cases - 10);
-    }
-    internal_snprintf(pos, 8, "\n");
-    LogBranchInfo(case_buf);
-  }
-}
-
-// Angora's trace function for string comparison functions (strcmp, memcmp, etc)
-extern "C" SANITIZER_INTERFACE_ATTRIBUTE void __angora_trace_fn_tt(
-    u32 cmpid, u32 context, u32 size, const char* ptr1, const char* ptr2) {
-  
-  if (!enable_branch_trace)
-    return;
-    
-  char buf[512];
-  internal_snprintf(buf, sizeof(buf),
-                   "[STRCMP] ID: %u, Ctx: 0x%x, Size: %u, Ptr1: %p, Ptr2: %p\n",
-                   cmpid, context, size, ptr1, ptr2);
-  LogBranchInfo(buf);
-  
-  // Show the actual string/memory content (up to 64 bytes)
-  if (ptr1 && ptr2 && size > 0) {
-    u32 show_size = (size < 64) ? size : 64;
-    char data_buf[512];
-    char* pos = data_buf;
-    
-    pos += internal_snprintf(pos, 32, "  Data1: ");
-    for (u32 i = 0; i < show_size; i++) {
-      u8 byte = ((const u8*)ptr1)[i];
-      if (byte >= 32 && byte < 127) {
-        pos += internal_snprintf(pos, 4, "%c", byte);
-      } else {
-        pos += internal_snprintf(pos, 8, "\\x%02x", byte);
-      }
-    }
-    
-    pos += internal_snprintf(pos, 32, "\n  Data2: ");
-    for (u32 i = 0; i < show_size; i++) {
-      u8 byte = ((const u8*)ptr2)[i];
-      if (byte >= 32 && byte < 127) {
-        pos += internal_snprintf(pos, 4, "%c", byte);
-      } else {
-        pos += internal_snprintf(pos, 8, "\\x%02x", byte);
-      }
-    }
-    internal_snprintf(pos, 8, "\n");
-    LogBranchInfo(data_buf);
-  }
-}
-
-// Angora's exploitation value tracking
-extern "C" SANITIZER_INTERFACE_ATTRIBUTE void __angora_trace_exploit_val_tt(
-    u32 cmpid, u32 context, u32 size, u32 type, u64 value) {
-  
-  if (!enable_branch_trace)
-    return;
-    
-  char buf[256];
-  internal_snprintf(buf, sizeof(buf),
-                   "[EXPLOIT] ID: %u, Ctx: 0x%x, Size: %u, Type: %u, Value: 0x%llx\n",
-                   cmpid, context, size, type, value);
-  LogBranchInfo(buf);
-}
 
 static uptr UnusedAddr() {
   // return MappingArchImpl<MAPPING_UNION_TABLE_ADDR>() +
@@ -352,6 +187,7 @@ const std::vector<tag_seg> dfsan_get_label_offsets(dfsan_label l) {
 //   return  __dfsan_tag_set->find(l);
 // }
 
+
 void Flags::SetDefaults() {
 #define DFSAN_FLAG(Type, Name, DefaultValue, Description) Name = DefaultValue;
 #include "dfsan_flags.inc"
@@ -393,14 +229,7 @@ static void InitializePlatformEarly() {
 #endif
 }
 
-static void dfsan_fini() {
-  if (branch_trace_fd != kInvalidFd) {
-    const char* footer = "\n=== End of Branch Trace ===\n";
-    WriteToFile(branch_trace_fd, footer, internal_strlen(footer));
-    CloseFile(branch_trace_fd);
-    branch_trace_fd = kInvalidFd;
-  }
-}
+static void dfsan_fini() {}
 
 static void dfsan_init(int argc, char **argv, char **envp) {
   InitializeFlags();
@@ -419,9 +248,6 @@ static void dfsan_init(int argc, char **argv, char **envp) {
     MmapFixedNoAccess(UnusedAddr(), AppAddr() - UnusedAddr());
 
   InitializeInterceptors();
-  
-  // Initialize branch tracing
-  InitializeBranchTrace();
 
   // Register the fini callback to run when the program terminates successfully
   // or it is killed by the runtime.

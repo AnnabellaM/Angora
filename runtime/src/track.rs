@@ -4,10 +4,108 @@ use angora_common::{cond_stmt_base::*, defs};
 use lazy_static::lazy_static;
 use libc;
 use std::{slice, sync::Mutex};
+use std::fs::OpenOptions;
+use std::io::Write;
 
 // use shm_conds;
 lazy_static! {
     static ref LC: Mutex<Option<Logger>> = Mutex::new(Some(Logger::new()));
+    static ref BRANCH_LOG: Mutex<Option<std::fs::File>> = Mutex::new(init_branch_log());
+}
+
+fn init_branch_log() -> Option<std::fs::File> {
+    if let Ok(log_path) = std::env::var("ANGORA_BRANCH_LOG") {
+        match OpenOptions::new()
+            .create(true)
+            .write(true)
+            .truncate(true)
+            .open(&log_path)
+        {
+            Ok(mut file) => {
+                writeln!(file, "=== Angora Branch Trace Log ===").ok();
+                Some(file)
+            }
+            Err(e) => {
+                eprintln!("Failed to open ANGORA_BRANCH_LOG {}: {}", log_path, e);
+                None
+            }
+        }
+    } else {
+        None
+    }
+}
+
+fn log_branch_cmp(
+    cmpid: u32,
+    context: u32,
+    size: u32,
+    op: u32,
+    arg1: u64,
+    arg2: u64,
+    condition: u32,
+    lb1: u32,
+    lb2: u32,
+) {
+    let mut blog = BRANCH_LOG.lock().unwrap();
+    if let Some(ref mut file) = *blog {
+        // Decode predicate
+        let pred = match op & 0xFF {
+            0 => "EQ",
+            1 => "NE",
+            32 => "UGT",
+            33 => "UGE",
+            34 => "ULT",
+            35 => "ULE",
+            36 => "SGT",
+            37 => "SGE",
+            38 => "SLT",
+            39 => "SLE",
+            _ => "UNK",
+        };
+
+        writeln!(
+            file,
+            "[CMP] ID: {}, Ctx: 0x{:x}, Size: {}, Pred: {}, Arg1: 0x{:x}, Arg2: 0x{:x}, Result: {}, Label1: {}, Label2: {}",
+            cmpid, context, size, pred, arg1, arg2, condition, lb1, lb2
+        ).ok();
+
+        // Print bytes for small values
+        if size <= 8 && size > 0 {
+            write!(file, "  Arg1 bytes: ").ok();
+            for i in 0..size {
+                write!(file, "{:02x} ", ((arg1 >> (i * 8)) & 0xFF) as u8).ok();
+            }
+            write!(file, "\n  Arg2 bytes: ").ok();
+            for i in 0..size {
+                write!(file, "{:02x} ", ((arg2 >> (i * 8)) & 0xFF) as u8).ok();
+            }
+            writeln!(file).ok();
+        }
+
+        // Print tainted byte offsets if available
+        if lb1 > 0 {
+            if let Ok(offsets) = tag_set_wrap::get_tag_offsets(lb1 as usize) {
+                if !offsets.is_empty() {
+                    write!(file, "  Tainted offsets (arg1): ").ok();
+                    for offset in offsets.iter().take(20) {
+                        write!(file, "{} ", offset).ok();
+                    }
+                    writeln!(file).ok();
+                }
+            }
+        }
+        if lb2 > 0 {
+            if let Ok(offsets) = tag_set_wrap::get_tag_offsets(lb2 as usize) {
+                if !offsets.is_empty() {
+                    write!(file, "  Tainted offsets (arg2): ").ok();
+                    for offset in offsets.iter().take(20) {
+                        write!(file, "{} ", offset).ok();
+                    }
+                    writeln!(file).ok();
+                }
+            }
+        }
+    }
 }
 
 fn infer_eq_sign(op: u32, lb1: u32, lb2: u32) -> u32 {
@@ -68,6 +166,9 @@ pub extern "C" fn __dfsw___angora_trace_cmp_tt(
     infer_shape(lb1, size);
     infer_shape(lb2, size);
 
+    // Add branch logging
+    log_branch_cmp(cmpid, context, size, op, arg1, arg2, condition, lb1, lb2);
+
     log_cmp(cmpid, context, condition, op, size, lb1, lb2, arg1, arg2);
 }
 
@@ -108,6 +209,38 @@ pub extern "C" fn __dfsw___angora_trace_switch_tt(
     let mut op = defs::COND_SW_OP;
     if tag_set_wrap::tag_set_get_sign(lb as usize) {
         op |= defs::COND_SIGN_MASK;
+    }
+
+    // Add switch logging
+    let mut blog = BRANCH_LOG.lock().unwrap();
+    if let Some(ref mut file) = *blog {
+        writeln!(
+            file,
+            "[SWITCH] ID: {}, Ctx: 0x{:x}, Size: {}, Condition: 0x{:x}, Cases: {}, Label: {}",
+            cmpid, context, size, condition, num, lb
+        ).ok();
+
+        let sw_args = unsafe { slice::from_raw_parts(args, num as usize) };
+        write!(file, "  Cases: ").ok();
+        let max_show = std::cmp::min(num as usize, 10);
+        for i in 0..max_show {
+            write!(file, "0x{:x} ", sw_args[i]).ok();
+        }
+        if num > 10 {
+            write!(file, "... ({} more)", num - 10).ok();
+        }
+        writeln!(file).ok();
+
+        // Print tainted offsets
+        if let Ok(offsets) = tag_set_wrap::get_tag_offsets(lb as usize) {
+            if !offsets.is_empty() {
+                write!(file, "  Tainted offsets: ").ok();
+                for offset in offsets.iter().take(20) {
+                    write!(file, "{} ", offset).ok();
+                }
+                writeln!(file).ok();
+            }
+        }
     }
 
     let cond = CondStmtBase {
@@ -175,6 +308,60 @@ pub extern "C" fn __dfsw___angora_trace_fn_tt(
     let arg1 = unsafe { slice::from_raw_parts(parg1 as *mut u8, arglen1) }.to_vec();
     let arg2 = unsafe { slice::from_raw_parts(parg2 as *mut u8, arglen2) }.to_vec();
 
+    // Add string comparison logging
+    let mut blog = BRANCH_LOG.lock().unwrap();
+    if let Some(ref mut file) = *blog {
+        writeln!(
+            file,
+            "[STRCMP] ID: {}, Ctx: 0x{:x}, Len1: {}, Len2: {}, Label1: {}, Label2: {}",
+            cmpid, context, arglen1, arglen2, lb1, lb2
+        ).ok();
+
+        // Print the strings/data
+        let print_data = |data: &[u8], label: &str| {
+            write!(file, "  {}: ", label).ok();
+            let max_len = std::cmp::min(data.len(), 64);
+            for &byte in &data[..max_len] {
+                if byte >= 32 && byte < 127 {
+                    write!(file, "{}", byte as char).ok();
+                } else {
+                    write!(file, "\\x{:02x}", byte).ok();
+                }
+            }
+            if data.len() > 64 {
+                write!(file, "... ({} more bytes)", data.len() - 64).ok();
+            }
+            writeln!(file).ok();
+        };
+
+        print_data(&arg1, "Data1");
+        print_data(&arg2, "Data2");
+
+        // Print tainted offsets
+        if lb1 > 0 {
+            if let Ok(offsets) = tag_set_wrap::get_tag_offsets(lb1 as usize) {
+                if !offsets.is_empty() {
+                    write!(file, "  Tainted offsets (arg1): ").ok();
+                    for offset in offsets.iter().take(20) {
+                        write!(file, "{} ", offset).ok();
+                    }
+                    writeln!(file).ok();
+                }
+            }
+        }
+        if lb2 > 0 {
+            if let Ok(offsets) = tag_set_wrap::get_tag_offsets(lb2 as usize) {
+                if !offsets.is_empty() {
+                    write!(file, "  Tainted offsets (arg2): ").ok();
+                    for offset in offsets.iter().take(20) {
+                        write!(file, "{} ", offset).ok();
+                    }
+                    writeln!(file).ok();
+                }
+            }
+        }
+    }
+
     let mut cond = CondStmtBase {
         cmpid,
         context,
@@ -227,6 +414,26 @@ pub extern "C" fn __dfsw___angora_trace_exploit_val_tt(
         return;
     }
 
+    // Add exploit value logging
+    let mut blog = BRANCH_LOG.lock().unwrap();
+    if let Some(ref mut file) = *blog {
+        writeln!(
+            file,
+            "[EXPLOIT] ID: {}, Ctx: 0x{:x}, Size: {}, Op: {}, Value: 0x{:x}, Label: {}",
+            cmpid, context, size, op, val, lb
+        ).ok();
+
+        if let Ok(offsets) = tag_set_wrap::get_tag_offsets(lb as usize) {
+            if !offsets.is_empty() {
+                write!(file, "  Tainted offsets: ").ok();
+                for offset in offsets.iter().take(20) {
+                    write!(file, "{} ", offset).ok();
+                }
+                writeln!(file).ok();
+            }
+        }
+    }
+
     log_cmp(cmpid, context, defs::COND_FALSE_ST, op, size, lb, 0, val, 0);
 }
 
@@ -264,6 +471,12 @@ fn log_cmp(
 
 #[no_mangle]
 pub extern "C" fn __angora_track_fini_rs() {
+    let mut blog = BRANCH_LOG.lock().unwrap();
+    if let Some(ref mut file) = *blog {
+        writeln!(file, "\n=== End of Branch Trace ===").ok();
+    }
+    *blog = None;
+
     let mut lcl = LC.lock().expect("Could not lock LC.");
     *lcl = None;
 }
