@@ -275,13 +275,19 @@ void __dfsan_cmp_callback(dfsan_label combined) {
   printf("in cmp callback\n");
   if (!combined) return;
   
-  FILE *F = get_log(); if (!F) return;
+  // FILE *F = get_log(); if (!F) return;
 
-  printf("{\"pc\":\"0x%llx\",\"bytes\":[",
+  FILE *F = fopen("output.json", "w");
+  if (F == NULL) {
+      perror("fopen failed");
+      return 1;
+  }
+
+  fprintf(F, "{\"pc\":\"0x%llx\",\"bytes\":[",
           (unsigned long long)current_pc());
   dump_base_bytes(combined, F);
   long pos = ftell(F); if (pos > 0) fseek(F, -1, SEEK_CUR);  // trim trailing comma
-  printf("]}\n");
+  fprintf(F, "]}\n");
 }
 // -----------------------------------------------------------------------
 
