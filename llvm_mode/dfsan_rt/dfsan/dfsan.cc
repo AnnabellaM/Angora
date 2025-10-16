@@ -279,7 +279,7 @@ void __dfsan_cmp_callback(dfsan_label combined) {
 
   FILE *F = fopen("output.json", "w");
 
-  fprintf(F, "{\"pc\":\"0x%llx\",\"bytes\":[",
+  printf("{\"pc\":\"0x%llx\",\"bytes\":[",
           (unsigned long long)current_pc());
   dump_base_bytes(combined, F);
   long pos = ftell(F); if (pos > 0) fseek(F, -1, SEEK_CUR);  // trim trailing comma
