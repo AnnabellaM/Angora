@@ -261,6 +261,16 @@ static inline uintptr_t current_pc() {
 }
 
 // Called for every icmp/fcmp when -angora-dfsan-event-callbacks is enabled.
+// Called for every icmp/fcmp when -angora-dfsan-event-callbacks is enabled.
+extern "C" SANITIZER_INTERFACE_ATTRIBUTE
+void __dfsan_load_callback(dfsan_label) {}
+
+extern "C" SANITIZER_INTERFACE_ATTRIBUTE
+void __dfsan_store_callback(dfsan_label) {}
+
+extern "C" SANITIZER_INTERFACE_ATTRIBUTE
+void __dfsan_mem_transfer_callback(const dfsan_label*, size_t) {}
+
 extern "C" SANITIZER_INTERFACE_ATTRIBUTE
 void __dfsan_cmp_callback(dfsan_label combined) {
   printf("in cmp callback\n");
