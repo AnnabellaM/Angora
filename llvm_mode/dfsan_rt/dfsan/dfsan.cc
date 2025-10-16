@@ -24,14 +24,12 @@
 #include "../sanitizer_common/sanitizer_flags.h"
 #include "../sanitizer_common/sanitizer_libc.h"
 
-
 #include "defs.h"
 #include "dfsan.h"
 #include "../../../runtime/include/tag_set.h"
 #include <vector>
-
+  
 using namespace __dfsan;
-
 
 Flags __dfsan::flags_data;
 
@@ -40,11 +38,48 @@ SANITIZER_INTERFACE_ATTRIBUTE THREADLOCAL dfsan_label __dfsan_arg_tls[64];
 
 SANITIZER_INTERFACE_ATTRIBUTE uptr __dfsan_shadow_ptr_mask;
 
-
 #ifdef DFSAN_RUNTIME_VMA
 // Runtime detected VMA size.
 int __dfsan::vmaSize;
 #endif
+
+// Branch trace output file
+static int branch_trace_fd = -1;
+static const char* branch_trace_file = nullptr;
+
+static void InitializeBranchTrace() {
+  branch_trace_file = GetEnv("DFSAN_BRANCH_TRACE");
+  if (branch_trace_file) {
+    branch_trace_fd = OpenFile(branch_trace_file, WrOnly);
+    if (branch_trace_fd == kInvalidFd) {
+      Report("WARNING: DataFlowSanitizer: failed to open branch trace file %s\n", 
+             branch_trace_file);
+    } else {
+      const char* header = "=== DataFlowSanitizer Branch Trace ===\n";
+      WriteToFile(branch_trace_fd, header, internal_strlen(header));
+    }
+  }
+}
+
+static void LogBranchInfo(const char* msg) {
+  if (branch_trace_fd != kInvalidFd) {
+    WriteToFile(branch_trace_fd, msg, internal_strlen(msg));
+  }
+  if (flags().warn_nonzero_labels) {
+    Printf("%s", msg);
+  }
+}
+
+// Trace conditional branches with tainted data
+extern "C" SANITIZER_INTERFACE_ATTRIBUTE void __dfsan_branch_callback(
+    uptr pc, dfsan_label label) {
+  if (label > 0) {
+    char buf[256];
+    internal_snprintf(buf, sizeof(buf),
+                     "[BRANCH] PC: 0x%lx, Label: %u\n", pc, label);
+    LogBranchInfo(buf);
+  }
+}
 
 static uptr UnusedAddr() {
   // return MappingArchImpl<MAPPING_UNION_TABLE_ADDR>() +
@@ -230,66 +265,14 @@ static void InitializePlatformEarly() {
 #endif
 }
 
-static void dfsan_fini() {}
-
-// ---- Byte→branch logging for compares ---------------------------------
-#include <inttypes.h>
-#include <cstdio>
-
-static THREADLOCAL FILE *angora_label_log;
-
-static FILE *get_log() {
-  if (angora_label_log) return angora_label_log;
-  const char *p = GetEnv("ANGORA_LABEL_LOG"); 
-  if (!p) p = "/tmp/labelmap.jsonl";
-  angora_label_log = fopen(p, "a");
-  if (!angora_label_log) return nullptr;
-  setvbuf(angora_label_log, nullptr, _IONBF, 0);
-  fprintf(angora_label_log, "{\"type\":\"labelmap\"}\n");
-  return angora_label_log;
-}
-
-static void dump_base_bytes(dfsan_label L, FILE *F) {
-  for (const auto &seg : dfsan_get_label_offsets(L)) {
-    for (uint32_t i = seg.begin; i < seg.end; ++i)
-      fprintf(F, "%u,", i);
+static void dfsan_fini() {
+  if (branch_trace_fd != kInvalidFd) {
+    const char* footer = "\n=== End of Branch Trace ===\n";
+    WriteToFile(branch_trace_fd, footer, internal_strlen(footer));
+    CloseFile(branch_trace_fd);
+    branch_trace_fd = kInvalidFd;
   }
 }
-
-static inline uintptr_t current_pc() {
-  return (uintptr_t)__builtin_return_address(0);
-}
-
-// Called for every icmp/fcmp when -angora-dfsan-event-callbacks is enabled.
-extern "C" SANITIZER_INTERFACE_ATTRIBUTE
-void __dfsan_load_callback(dfsan_label) {}
-
-extern "C" SANITIZER_INTERFACE_ATTRIBUTE
-void __dfsan_store_callback(dfsan_label) {}
-
-extern "C" SANITIZER_INTERFACE_ATTRIBUTE
-void __dfsan_mem_transfer_callback(const dfsan_label*, size_t) {}
-
-extern "C" SANITIZER_INTERFACE_ATTRIBUTE
-void __dfsan_cmp_callback(dfsan_label combined) {
-  printf("in cmp callback\n");
-  printf("combined: %u\n", combined);
-  if (!combined) return;
-
-  printf("{\"pc\":\"0x\",\"bytes\":[");
-
-  // FILE *F = get_log(); if (!F) return;
-
-  FILE *F = fopen("output.json", "w");
-
-  printf("{\"pc\":\"0x%llx\",\"bytes\":[",
-          (unsigned long long)current_pc());
-  dump_base_bytes(combined, F);
-  long pos = ftell(F); if (pos > 0) fseek(F, -1, SEEK_CUR);  // trim trailing comma
-  fprintf(F, "]}\n");
-}
-// -----------------------------------------------------------------------
-
 
 static void dfsan_init(int argc, char **argv, char **envp) {
   InitializeFlags();
@@ -308,6 +291,9 @@ static void dfsan_init(int argc, char **argv, char **envp) {
     MmapFixedNoAccess(UnusedAddr(), AppAddr() - UnusedAddr());
 
   InitializeInterceptors();
+  
+  // Initialize branch tracing
+  InitializeBranchTrace();
 
   // Register the fini callback to run when the program terminates successfully
   // or it is killed by the runtime.
