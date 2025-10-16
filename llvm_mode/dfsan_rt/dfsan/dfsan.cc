@@ -261,7 +261,6 @@ static inline uintptr_t current_pc() {
 }
 
 // Called for every icmp/fcmp when -angora-dfsan-event-callbacks is enabled.
-// Called for every icmp/fcmp when -angora-dfsan-event-callbacks is enabled.
 extern "C" SANITIZER_INTERFACE_ATTRIBUTE
 void __dfsan_load_callback(dfsan_label) {}
 
@@ -278,11 +277,11 @@ void __dfsan_cmp_callback(dfsan_label combined) {
   
   FILE *F = get_log(); if (!F) return;
 
-  fprintf(F, "{\"pc\":\"0x%llx\",\"bytes\":[",
+  printf(F, "{\"pc\":\"0x%llx\",\"bytes\":[",
           (unsigned long long)current_pc());
   dump_base_bytes(combined, F);
   long pos = ftell(F); if (pos > 0) fseek(F, -1, SEEK_CUR);  // trim trailing comma
-  fprintf(F, "]}\n");
+  printf(F, "]}\n");
 }
 // -----------------------------------------------------------------------
 
