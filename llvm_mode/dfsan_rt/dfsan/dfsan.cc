@@ -278,10 +278,6 @@ void __dfsan_cmp_callback(dfsan_label combined) {
   // FILE *F = get_log(); if (!F) return;
 
   FILE *F = fopen("output.json", "w");
-  if (F == NULL) {
-      perror("fopen failed");
-      return 1;
-  }
 
   fprintf(F, "{\"pc\":\"0x%llx\",\"bytes\":[",
           (unsigned long long)current_pc());
