@@ -274,7 +274,9 @@ extern "C" SANITIZER_INTERFACE_ATTRIBUTE
 void __dfsan_cmp_callback(dfsan_label combined) {
   printf("in cmp callback\n");
   if (!combined) return;
-  
+
+  printf("{\"pc\":\"0x\",\"bytes\":[");
+
   // FILE *F = get_log(); if (!F) return;
 
   FILE *F = fopen("output.json", "w");
